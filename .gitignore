@@ -1,0 +1,9 @@
+# Folders
+.agents
+.codex
+.vs
+output/
+project_files/**
+*.pdb
+*.asi
+*.ilk
