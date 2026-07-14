@@ -3,7 +3,7 @@
 .codex
 .vs
 output/
-project_files/**
+project_files/.vs
 *.pdb
 *.asi
 *.ilk
