@@ -50,6 +50,7 @@ EnableTokenPickupBlips=1
 EnableFrenzyPickupBlips=1
 EnableOtherPickupBlips=1
 PickupBlipMaxDistance=1.1
+PickupIconReferenceSize=30.0
 
 ; Diagnostics
 EnablePickupBlipLog=1
@@ -63,6 +64,7 @@ Set `PauseRadarLeft=-1` or `PauseRadarBottom=-1` to auto-center that axis using 
 
 Pickup blip groups are: vehicle (`149`), weapons (`200`-`223`), bonuses (`228`-`240`), token (`266`), frenzy (`286`), and other legacy object IDs.
 When `EnablePickupIcons=1`, pickup blips use numeric HUD icons from `data\hud\<model>.dds` such as `data\hud\201.dds`. Missing icons automatically fall back to the colored marker.
+`PickupIconReferenceSize` controls texture-size scaling. At the default `30.0`, a 30x30 icon uses the normal blip size, while wider or taller textures can extend beyond that square without being shrunk to fit it. Lower values make textured pickup icons larger; higher values make them smaller.
 
 When pickup logging is enabled, scan diagnostics are written to `scripts\GTA2Radar.log`.
  

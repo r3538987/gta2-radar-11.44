@@ -72,6 +72,7 @@ static int EnableFrenzyPickupBlips = config["EnableFrenzyPickupBlips"].asInt(1);
 static int EnableOtherPickupBlips = config["EnableOtherPickupBlips"].asInt(1);
 static int EnablePickupBlipLog = config["EnablePickupBlipLog"].asInt(1);
 static float PickupBlipMaxDistance = config["PickupBlipMaxDistance"].asFloat(1.1f);
+static float PickupIconReferenceSize = config["PickupIconReferenceSize"].asFloat(30.0f);
 
 enum eEnableBuiltinArrows {
     DISABLED,
@@ -754,10 +755,9 @@ public:
                     fclose(file);
                 }
 
-                if (width > 0 && height > 0) {
-                    float longestSide = static_cast<float>(width > height ? width : height);
-                    pickupSpriteAspectX[i] = static_cast<float>(width) / longestSide;
-                    pickupSpriteAspectY[i] = static_cast<float>(height) / longestSide;
+                if (width > 0 && height > 0 && PickupIconReferenceSize > 0.0f) {
+                    pickupSpriteAspectX[i] = static_cast<float>(width) / PickupIconReferenceSize;
+                    pickupSpriteAspectY[i] = static_cast<float>(height) / PickupIconReferenceSize;
                 }
 
                 loaded++;
