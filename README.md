@@ -6,6 +6,13 @@ Some changes have been made in order to make it work correctly in GTA2 but the b
 
 - [gta2-radar by Sektor](https://gtamp.com/forum/viewtopic.php?f=4&t=818) was used as a reference for this project.
 
+Experiment results:
+<p align="center">
+<img src="https://i.imgur.com/TjvKrYh.jpeg" width="300" height="300">
+<img src="https://i.imgur.com/ts2VPXP.jpeg" height="300"> <br/>
+</p>
+
+
 ## Features:
  - Full Map for each districts and bonus levels.
  - Shows mission blips from gangs, churches, garages.
