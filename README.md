@@ -25,30 +25,34 @@ Experiment results:
 Create or edit `scripts\GTA2Radar.ini` to override defaults:
 
 ```ini
+[GTA2Radar]
 ; Main feature switches
-EnableBuiltinArrows=0
-EnablePickupBlips=1
-EnablePauseStatsRadar=1
+EnableBuiltinArrows=1           # Built-in navigation arrows: 0 = disable, 1 = enable, 2 = dynamic
+EnablePickupBlips=1             # 0 = default radar mod behavior (paint/phones/...), 1 = show pickups
+EnablePauseStatsRadar=0         # 0 = radar remain same during pause, 1 = radar uses pause radar settings from below 
 
 ; Gameplay radar settings
 RadarBlipsSize=7.0
 
 ; Built-in arrow settings
-DynamicArrowsDistance=1.0
+DynamicArrowsDistance = 1.0     # 
+ToggleDefaultArrows = 0x52      # Default 0x52 = R key (https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes)
 
-; Pause radar settings
-PauseRadarLeft=-1
-PauseRadarBottom=26.0
-PauseRadarWidth=160.0
-PauseRadarHeight=160.0
-PauseRadarBlipsSize=4.0
-PauseRadarRange=100.0
+; Pause radar settings          # (looks fine on 1440p screen, but may need adjustment for other resolutions)
 EnablePauseStatsLayout=1
-PauseStatsTextY=52
-PauseStatsSpriteY=64
+PauseStatsTextY=52              # Shifts the pause stats text.
+PauseStatsSpriteY=64            # Shifts the pause stats text sprite.
+PauseRadarLeft=-1
+PauseRadarBottom=100.0          # Pauses the radar offset from the bottom of the screen.
+PauseRadarWidth=300.0
+PauseRadarHeight=300.0
+PauseRadarBlipsSize=5.5
+PauseRadarRange=100.0           # How zoomed out the radar is.
+; PauseRadarFramePadding=0.25
+; PauseRadarAutoOffsetX=-256.0
 
 ; Pickup blip settings
-EnablePickupIcons=1             # 1 = uses icons for pickups from data\hud\201.dds, 0 = colored markers
+EnablePickupIcons=1             # 1 = uses icons for pickups from data\hud\xxx.dds, 0 = colored markers
 EnableVehiclePickupBlips=1      # VAN car with antenna pointing towards level start location (model ID 149)
 EnableWeaponPickupBlips=1       # Shows weapon pickups (primarily models IDs 200–223)
 EnableBonusPickupBlips=1        # Shows bonuses and power-ups (model IDs 228–240)
@@ -59,7 +63,7 @@ PickupBlipMaxDistance=1.1
 PickupIconReferenceSize=30.0
 
 ; Diagnostics
-EnablePickupBlipLog=1
+EnablePickupBlipLog=0
 ```
 
 `RadarBlipsSize` controls all gameplay radar icons, including the original radar blips and pickup icons. `PauseRadarBlipsSize` controls those same icons while the pause radar is active.
