@@ -32,6 +32,7 @@
 #include "CPed.h"
 #include "CGame.h"
 #include "CObject.h"
+#include "CCarManager.h"
 #include "CGlobal.h"
 #include "CKeybrd.h"
 #include "CHud.h"
@@ -208,6 +209,40 @@ static float pickupSpriteAspectX[NUM_PICKUP_SPRITES];
 static float pickupSpriteAspectY[NUM_PICKUP_SPRITES];
 static bool radarD3DReady = true;
 
+struct tVehicleFrenzyBlip {
+    const char* mapName;
+    CVector spawnPosition;
+    unsigned int model;
+    short remap;
+    CCar* car;
+    bool activated;
+    bool leftSpawnAfterActivation;
+};
+
+// Stock PARKED_CAR_DATA entries used by START_BASIC_KF_TEMPLATE in the
+// installed wil.scr, ste.scr and bil.scr scripts.
+static tVehicleFrenzyBlip vehicleFrenzyBlips[] = {
+    { "wil", { 226.50f, 238.50f, 2.00f }, MODEL_TANK,     0, nullptr, false },
+    { "wil", {   3.50f, 164.50f, 3.00f }, MODEL_TANK,     0, nullptr, false },
+    { "wil", {   5.50f,  26.50f, 3.00f }, MODEL_FIRETRUK, 0, nullptr, false },
+    { "wil", {   8.50f, 139.50f, 3.00f }, MODEL_TAXI,     0, nullptr, false },
+
+    { "ste", {  13.00f,  83.00f, 2.00f }, MODEL_TANK,     0, nullptr, false },
+    { "ste", {  29.00f, 178.00f, 3.00f }, MODEL_TANK,     0, nullptr, false },
+    { "ste", {  67.50f,  17.50f, 2.00f }, MODEL_ZCX5,    -1, nullptr, false },
+    { "ste", {   6.50f, 173.50f, 2.00f }, MODEL_ZCX5,     2, nullptr, false },
+    { "ste", { 242.50f, 185.50f, 2.00f }, MODEL_ZCX5,     9, nullptr, false },
+
+    { "bil", {   3.00f,  30.00f, 3.00f }, MODEL_TANK,     0, nullptr, false },
+    { "bil", {  72.00f, 219.50f, 2.00f }, MODEL_TANK,     0, nullptr, false },
+    { "bil", {  71.00f, 241.00f, 2.00f }, MODEL_JEEP,    -1, nullptr, false },
+    { "bil", { 156.00f, 146.00f, 4.00f }, MODEL_JEFFREY,  2, nullptr, false },
+    { "bil", { 246.50f,  26.50f, 2.00f }, MODEL_XK120,    9, nullptr, false },
+};
+
+static char currentMapName[32] = {};
+static unsigned int vehicleFrenzyLogFrame = 0;
+
 static IDirect3DDevice3* TryGetRadarD3DDevice() {
     if (!GetModuleHandleA("d3ddll.dll"))
         return nullptr;
@@ -263,8 +298,8 @@ static void ResetRadarLog() {
     if (!file)
         return;
 
-    fprintf(file, "GTA2Radar log started. EnablePickupBlips=%d EnablePickupIcons=%d RadarBlipsSize=%.2f PauseRadarBlipsSize=%.2f PickupBlipMaxDistance=%.2f\n",
-        EnablePickupBlips, EnablePickupIcons, RadarBlipsSize, PauseRadarBlipsSize, PickupBlipMaxDistance);
+    fprintf(file, "GTA2Radar log started. EnablePickupBlips=%d EnablePickupIcons=%d EnableFrenzyPickupBlips=%d RadarBlipsSize=%.2f PauseRadarBlipsSize=%.2f PickupBlipMaxDistance=%.2f\n",
+        EnablePickupBlips, EnablePickupIcons, EnableFrenzyPickupBlips, RadarBlipsSize, PauseRadarBlipsSize, PickupBlipMaxDistance);
     fclose(file);
 }
 
@@ -782,6 +817,319 @@ public:
         DrawLevel(pos, level, scale, col);
     }
 
+    static bool TryGetCarBlipData(CCar* car, CVector& position, unsigned int& model, short& remap) {
+        if (!car)
+            return false;
+
+        CSprite* sprite = nullptr;
+        CEncodedVector encodedPosition;
+        if (!TryRead(reinterpret_cast<uintptr_t>(&car->m_nModel), model) ||
+            !TryRead(reinterpret_cast<uintptr_t>(&car->m_pSprite), sprite) ||
+            !sprite ||
+            !TryRead(reinterpret_cast<uintptr_t>(&sprite->m_vPosition), encodedPosition) ||
+            !TryRead(reinterpret_cast<uintptr_t>(&sprite->m_nRemap), remap)) {
+            return false;
+        }
+
+        position = encodedPosition.FromInt16();
+        return true;
+    }
+
+    static bool IsCarInManager(CCarManager* manager, CCar* car) {
+        if (!manager || !car)
+            return false;
+
+        CCar* candidate = nullptr;
+        if (!TryRead(reinterpret_cast<uintptr_t>(&manager->m_pLast), candidate))
+            return false;
+
+        for (int i = 0; candidate && i < 306; i++) {
+            if (candidate == car)
+                return true;
+
+            CCar* next = nullptr;
+            if (!TryRead(reinterpret_cast<uintptr_t>(&candidate->m_pLastCar), next))
+                return false;
+
+            candidate = next;
+        }
+
+        return false;
+    }
+
+    static CCar* FindVehicleFrenzyCar(CCarManager* manager, const tVehicleFrenzyBlip& frenzy, bool shouldLog) {
+        if (!manager)
+            return nullptr;
+
+        CCar* nearestCar = nullptr;
+        float nearestDistanceSquared = 2.25f;
+        float nearestModelDistanceSquared = -1.0f;
+        CVector nearestModelPosition = {};
+        short nearestModelRemap = 0;
+        int nonNullCars = 0;
+        int readableCars = 0;
+        int modelMatches = 0;
+        int remapMatches = 0;
+
+        CCar* car = nullptr;
+        if (!TryRead(reinterpret_cast<uintptr_t>(&manager->m_pLast), car))
+            return nullptr;
+
+        for (int i = 0; car && i < 306; i++) {
+            nonNullCars++;
+
+            CCar* next = nullptr;
+            bool nextRead = TryRead(reinterpret_cast<uintptr_t>(&car->m_pLastCar), next);
+
+            CVector position;
+            unsigned int model = 0;
+            short remap = 0;
+            if (!TryGetCarBlipData(car, position, model, remap)) {
+                if (!nextRead)
+                    break;
+                car = next;
+                continue;
+            }
+
+            readableCars++;
+            if (model != frenzy.model) {
+                if (!nextRead)
+                    break;
+                car = next;
+                continue;
+            }
+
+            modelMatches++;
+
+            float dx = position.x - frenzy.spawnPosition.x;
+            float dy = position.y - frenzy.spawnPosition.y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (nearestModelDistanceSquared < 0.0f || distanceSquared < nearestModelDistanceSquared) {
+                nearestModelDistanceSquared = distanceSquared;
+                nearestModelPosition = position;
+                nearestModelRemap = remap;
+            }
+
+            // A negative scripted remap means the game may choose the remap,
+            // so only enforce it for definitions with an explicit value.
+            if (frenzy.remap >= 0 && remap != frenzy.remap) {
+                if (!nextRead)
+                    break;
+                car = next;
+                continue;
+            }
+
+            remapMatches++;
+            if (distanceSquared <= nearestDistanceSquared) {
+                nearestDistanceSquared = distanceSquared;
+                nearestCar = car;
+            }
+
+            if (!nextRead)
+                break;
+            car = next;
+        }
+
+        if (shouldLog) {
+            RadarLog("vehicle frenzy candidate: map=%s model=%u remap=%d spawn=%.2f,%.2f,%.2f cars=%d readable=%d modelMatches=%d remapMatches=%d nearestModelDistSq=%.3f nearestModelPos=%.2f,%.2f,%.2f nearestModelRemap=%d matched=0x%08X",
+                frenzy.mapName, frenzy.model, frenzy.remap,
+                frenzy.spawnPosition.x, frenzy.spawnPosition.y, frenzy.spawnPosition.z,
+                nonNullCars, readableCars, modelMatches, remapMatches,
+                nearestModelDistanceSquared, nearestModelPosition.x, nearestModelPosition.y, nearestModelPosition.z,
+                nearestModelRemap, reinterpret_cast<uintptr_t>(nearestCar));
+        }
+
+        return nearestCar;
+    }
+
+    static void DrawVehicleFrenzyBlips() {
+        if (!EnablePickupBlips || !EnableFrenzyPickupBlips)
+            return;
+
+        vehicleFrenzyLogFrame++;
+        const bool shouldLog = EnablePickupBlipLog &&
+            (vehicleFrenzyLogFrame == 1 || (vehicleFrenzyLogFrame % 300) == 0);
+
+        if (!currentMapName[0]) {
+            if (shouldLog)
+                RadarLog("vehicle frenzy scan: current map name is empty");
+            return;
+        }
+
+        const tPickupBlip* frenzyPickup = FindPickupBlip(286);
+        CPlayerPed* playa = GetGame()->FindPlayerPed(0);
+        CCarManager* manager = nullptr;
+        bool managerRead = TryRead(reinterpret_cast<uintptr_t>(gCarManager), manager);
+        short managerCarCount = -1;
+        bool managerCountRead = manager &&
+            TryRead(reinterpret_cast<uintptr_t>(&manager->m_nCarsCount), managerCarCount);
+
+        if (shouldLog) {
+            RadarLog("vehicle frenzy scan: map=%s managerGlobal=0x%08X managerRead=%d manager=0x%08X countRead=%d count=%d player=0x%08X ped=0x%08X",
+                currentMapName, reinterpret_cast<uintptr_t>(gCarManager), managerRead,
+                reinterpret_cast<uintptr_t>(manager), managerCountRead, managerCarCount,
+                reinterpret_cast<uintptr_t>(playa), reinterpret_cast<uintptr_t>(playa ? playa->GetPed() : nullptr));
+        }
+
+        if (!frenzyPickup || !playa || !playa->GetPed() || !manager) {
+            if (shouldLog)
+                RadarLog("vehicle frenzy scan skipped: icon=%d player=%d ped=%d manager=%d",
+                    frenzyPickup != nullptr, playa != nullptr,
+                    playa && playa->GetPed() != nullptr, manager != nullptr);
+            return;
+        }
+
+        CCar* playerCar = playa->GetPed()->m_pCurrentCar;
+
+        for (auto& frenzy : vehicleFrenzyBlips) {
+            if (strcmp(frenzy.mapName, currentMapName))
+                continue;
+
+            if (frenzy.activated) {
+                if (frenzy.car && IsCarInManager(manager, frenzy.car)) {
+                    CVector activePosition;
+                    unsigned int activeModel = 0;
+                    short activeRemap = 0;
+                    bool activeDataRead = TryGetCarBlipData(frenzy.car, activePosition, activeModel, activeRemap);
+                    float activeDistanceSquared = -1.0f;
+
+                    if (activeDataRead) {
+                        float dx = activePosition.x - frenzy.spawnPosition.x;
+                        float dy = activePosition.y - frenzy.spawnPosition.y;
+                        activeDistanceSquared = dx * dx + dy * dy;
+
+                        if (activeDistanceSquared > 2.25f)
+                            frenzy.leftSpawnAfterActivation = true;
+
+                    }
+
+                    if (frenzy.leftSpawnAfterActivation && playerCar != frenzy.car) {
+                        CCar* previousCar = frenzy.car;
+                        CCar* respawnedCar = FindVehicleFrenzyCar(manager, frenzy, shouldLog);
+                        if (respawnedCar) {
+                            frenzy.car = respawnedCar;
+                            frenzy.activated = false;
+                            frenzy.leftSpawnAfterActivation = false;
+                            RadarLog("vehicle frenzy rearmed at spawn: map=%s model=%u remap=%d spawn=%.2f,%.2f,%.2f previousCar=0x%08X respawnedCar=0x%08X reusedSlot=%d",
+                                frenzy.mapName, frenzy.model, frenzy.remap,
+                                frenzy.spawnPosition.x, frenzy.spawnPosition.y, frenzy.spawnPosition.z,
+                                reinterpret_cast<uintptr_t>(previousCar), reinterpret_cast<uintptr_t>(respawnedCar),
+                                previousCar == respawnedCar);
+                        }
+                    }
+
+                    if (frenzy.activated) {
+                        if (shouldLog) {
+                            RadarLog("vehicle frenzy waiting for respawn: map=%s model=%u spawn=%.2f,%.2f activeCar=0x%08X dataRead=%d pos=%.2f,%.2f,%.2f distSq=%.3f leftSpawn=%d playerCar=0x%08X",
+                                frenzy.mapName, frenzy.model, frenzy.spawnPosition.x, frenzy.spawnPosition.y,
+                                reinterpret_cast<uintptr_t>(frenzy.car), activeDataRead,
+                                activeDataRead ? activePosition.x : 0.0f,
+                                activeDataRead ? activePosition.y : 0.0f,
+                                activeDataRead ? activePosition.z : 0.0f,
+                                activeDistanceSquared, frenzy.leftSpawnAfterActivation,
+                                reinterpret_cast<uintptr_t>(playerCar));
+                        }
+                        continue;
+                    }
+                }
+
+                if (frenzy.activated && frenzy.car) {
+                    RadarLog("vehicle frenzy activated car removed: map=%s model=%u spawn=%.2f,%.2f car=0x%08X",
+                        frenzy.mapName, frenzy.model, frenzy.spawnPosition.x, frenzy.spawnPosition.y,
+                        reinterpret_cast<uintptr_t>(frenzy.car));
+                    frenzy.car = nullptr;
+                    frenzy.leftSpawnAfterActivation = true;
+                }
+
+                if (frenzy.activated) {
+                    CCar* respawnedCar = FindVehicleFrenzyCar(manager, frenzy, shouldLog);
+                    if (!respawnedCar)
+                        continue;
+
+                    frenzy.car = respawnedCar;
+                    frenzy.activated = false;
+                    frenzy.leftSpawnAfterActivation = false;
+                    RadarLog("vehicle frenzy rearmed: map=%s model=%u remap=%d spawn=%.2f,%.2f,%.2f car=0x%08X",
+                        frenzy.mapName, frenzy.model, frenzy.remap,
+                        frenzy.spawnPosition.x, frenzy.spawnPosition.y, frenzy.spawnPosition.z,
+                        reinterpret_cast<uintptr_t>(frenzy.car));
+                }
+            }
+
+            if (frenzy.car && !IsCarInManager(manager, frenzy.car)) {
+                RadarLog("vehicle frenzy car lost: map=%s model=%u spawn=%.2f,%.2f car=0x%08X",
+                    frenzy.mapName, frenzy.model, frenzy.spawnPosition.x, frenzy.spawnPosition.y,
+                    reinterpret_cast<uintptr_t>(frenzy.car));
+                frenzy.car = nullptr;
+            }
+
+            if (!frenzy.car) {
+                frenzy.car = FindVehicleFrenzyCar(manager, frenzy, shouldLog);
+                if (frenzy.car) {
+                    RadarLog("vehicle frenzy matched: map=%s model=%u remap=%d spawn=%.2f,%.2f,%.2f car=0x%08X",
+                        frenzy.mapName, frenzy.model, frenzy.remap,
+                        frenzy.spawnPosition.x, frenzy.spawnPosition.y, frenzy.spawnPosition.z,
+                        reinterpret_cast<uintptr_t>(frenzy.car));
+                }
+            }
+
+            if (!frenzy.car)
+                continue;
+
+            if (playerCar == frenzy.car) {
+                RadarLog("vehicle frenzy activated: map=%s model=%u spawn=%.2f,%.2f car=0x%08X",
+                    frenzy.mapName, frenzy.model, frenzy.spawnPosition.x, frenzy.spawnPosition.y,
+                    reinterpret_cast<uintptr_t>(frenzy.car));
+                frenzy.activated = true;
+                frenzy.leftSpawnAfterActivation = false;
+                continue;
+            }
+
+            CVector position;
+            unsigned int model = 0;
+            short remap = 0;
+            if (!TryGetCarBlipData(frenzy.car, position, model, remap)) {
+                if (shouldLog) {
+                    RadarLog("vehicle frenzy state: map=%s spawn=%.2f,%.2f car=0x%08X dataRead=0",
+                        frenzy.mapName, frenzy.spawnPosition.x, frenzy.spawnPosition.y,
+                        reinterpret_cast<uintptr_t>(frenzy.car));
+                }
+                continue;
+            }
+
+            CVector2D radarPosition = {};
+            CVector2D screenPosition = {};
+            TransformRealWorldPointToRadarSpace(radarPosition, { position.x, position.y });
+            float distance = LimitRadarPoint(radarPosition);
+            if (distance > PickupBlipMaxDistance) {
+                if (shouldLog) {
+                    RadarLog("vehicle frenzy hidden: map=%s model=%u remap=%d pos=%.2f,%.2f,%.2f distance=%.2f maxDistance=%.2f car=0x%08X",
+                        frenzy.mapName, model, remap, position.x, position.y, position.z,
+                        distance, PickupBlipMaxDistance, reinterpret_cast<uintptr_t>(frenzy.car));
+                }
+                continue;
+            }
+
+            TransformRadarPointToScreenSpace(screenPosition, radarPosition);
+
+            int level = 0;
+            float heightDifference = playa->GetPed()->GetPosition().FromInt16().z - position.z;
+            if (heightDifference > 0.1f)
+                level = 1;
+            else if (heightDifference < -0.1f)
+                level = 2;
+
+            CRGBA color = frenzyPickup->color;
+            color.a = CalculateBlipAlpha(distance);
+            DrawPickupMarker(frenzyPickup, screenPosition, level, color);
+            if (shouldLog) {
+                RadarLog("vehicle frenzy drawn: map=%s model=%u remap=%d pos=%.2f,%.2f,%.2f distance=%.2f screen=%.1f,%.1f car=0x%08X",
+                    frenzy.mapName, model, remap, position.x, position.y, position.z,
+                    distance, screenPosition.x, screenPosition.y, reinterpret_cast<uintptr_t>(frenzy.car));
+            }
+        }
+    }
+
     static void DrawPickupBlips() {
         if (!EnablePickupBlips)
             return;
@@ -1028,6 +1376,7 @@ public:
         }
 
         DrawPickupBlips();
+        DrawVehicleFrenzyBlips();
         DrawRadarCentre();
     }
 
@@ -1109,6 +1458,20 @@ public:
                 i++;
                 s++;
             }
+
+            strncpy(currentMapName, mapName, sizeof(currentMapName) - 1);
+            currentMapName[sizeof(currentMapName) - 1] = '\0';
+            vehicleFrenzyLogFrame = 0;
+            int vehicleFrenzyDefinitions = 0;
+            for (auto& frenzy : vehicleFrenzyBlips) {
+                frenzy.car = nullptr;
+                frenzy.activated = false;
+                frenzy.leftSpawnAfterActivation = false;
+                if (!strcmp(frenzy.mapName, currentMapName))
+                    vehicleFrenzyDefinitions++;
+            }
+            RadarLog("vehicle frenzy init: map=%s definitions=%d managerGlobal=0x%08X",
+                currentMapName, vehicleFrenzyDefinitions, reinterpret_cast<uintptr_t>(gCarManager));
 
             // Hardcoded blips
             hardCodedBlips.clear();

@@ -12,7 +12,6 @@ Experiment results:
 <img src="https://i.imgur.com/ts2VPXP.jpeg" height="300"> <br/>
 </p>
 
-
 ## Features:
  - Full Map for each districts and bonus levels.
  - Shows mission blips from gangs, churches, garages.
@@ -49,13 +48,13 @@ PauseStatsTextY=52
 PauseStatsSpriteY=64
 
 ; Pickup blip settings
-EnablePickupIcons=1
-EnableVehiclePickupBlips=1
-EnableWeaponPickupBlips=1
-EnableBonusPickupBlips=1
-EnableTokenPickupBlips=1
-EnableFrenzyPickupBlips=1
-EnableOtherPickupBlips=1
+EnablePickupIcons=1             # 1 = uses icons for pickups from data\hud\201.dds, 0 = colored markers
+EnableVehiclePickupBlips=1      # VAN car with antenna pointing towards level start location (model ID 149)
+EnableWeaponPickupBlips=1       # Shows weapon pickups (primarily models IDs 200–223)
+EnableBonusPickupBlips=1        # Shows bonuses and power-ups (model IDs 228–240)
+EnableTokenPickupBlips=1        # Shows collectible tokens (model ID 266)
+EnableFrenzyPickupBlips=1       # Shows the kill-frenzy pickup (model ID 286)
+EnableOtherPickupBlips=1        # Shows placed mines (ID 10) and PEW PEW text for bulled projectiles (ID 13, 56, 128, 138, 182, 183, 254, and 265)
 PickupBlipMaxDistance=1.1
 PickupIconReferenceSize=30.0
 
@@ -69,7 +68,7 @@ The gameplay radar uses `data\hud\radar_rect.dds`; the large pause radar uses `d
 Set `PauseRadarLeft=-1` or `PauseRadarBottom=-1` to auto-center that axis using the current WidescreenFix-expanded screen resolution.
 `EnablePauseStatsLayout=1` moves the game's original current-level stats text and stats image/sprite while the large pause radar is enabled; adjust `PauseStatsTextY` and `PauseStatsSpriteY` if they overlap the pause radar. These layout values are ignored when `EnablePauseStatsRadar=0`.
 
-Pickup blip groups are: vehicle (`149`), weapons (`200`-`223`), bonuses (`228`-`240`), token (`266`), frenzy (`286`), and other legacy object IDs.
+Pickup blip groups are: vehicle (`149`), weapons (`200`-`223`), bonuses (`228`-`240`), token (`266`), frenzy (`286`), and other legacy object IDs. `EnableFrenzyPickupBlips=1` also marks the 14 vehicle-bound frenzies in the stock `wil`, `ste`, and `bil` scripts; those blips follow the live car and disappear when the player enters it.
 When `EnablePickupIcons=1`, pickup blips use numeric HUD icons from `data\hud\<model>.dds` such as `data\hud\201.dds`. Missing icons automatically fall back to the colored marker.
 `PickupIconReferenceSize` controls texture-size scaling. At the default `30.0`, a 30x30 icon uses the normal blip size, while wider or taller textures can extend beyond that square without being shrunk to fit it. Lower values make textured pickup icons larger; higher values make them smaller.
 
