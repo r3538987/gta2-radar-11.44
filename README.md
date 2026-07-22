@@ -20,8 +20,8 @@ Some changes have been made in order to make it work correctly in GTA2 but the b
 
 Experiment results:
 <p align="center">
-<img src="https://i.imgur.com/TjvKrYh.jpeg" width="300" height="300">
-<img src="https://i.imgur.com/ts2VPXP.jpeg" height="300"> <br/>
+<img src="https://i.imgur.com/aHXD33N.png" height="300"> 
+<img src="https://i.imgur.com/5qMWKns.png" height="300"> <br/>
 </p>
 
 ## Configuration:
