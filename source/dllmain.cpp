@@ -165,6 +165,8 @@ static const tPickupBlip pickupBlips[] = {
     { 128, PICKUP_GROUP_OTHER,   CRGBA(210, 210, 210, 255) },
     { 138, PICKUP_GROUP_OTHER,   CRGBA(210, 210, 210, 255) },
     { 149, PICKUP_GROUP_VEHICLE, CRGBA(210, 210, 210, 255) },
+    // Icon-only entry for Wang Cars. Object model 150 is crane/crusher scenery
+    // and must not be treated as a generic pickup by DrawPickupBlips().
     { 150, PICKUP_GROUP_VEHICLE, CRGBA(255, 160, 40, 255) },
     { 182, PICKUP_GROUP_OTHER,   CRGBA(210, 210, 210, 255) },
     { 183, PICKUP_GROUP_OTHER,   CRGBA(210, 210, 210, 255) },
@@ -251,8 +253,9 @@ struct tWangCarBlip {
 
 // The eight script-placed GT-A1 cars used by the Wang Cars collection on
 // ste.scr. Match them by model and original placement instead of colour/remap:
-// the script values 90/180/270 are rotations. Once found, retain the car object
-// so its blip follows it while map cranes or other scripted transport move it.
+// the script values 90/180/270 are rotations. An inactive pool entry is only
+// considered the original Wang car while it remains near that placement.
+static constexpr float WANG_CAR_SPAWN_MATCH_DISTANCE_SQUARED = 16.0f;
 static tWangCarBlip wangCarBlips[] = {
     { { 229.50f, 178.00f, 0.00f }, nullptr, false, false },
     { {  58.50f,   3.50f, 0.00f }, nullptr, false, false },
@@ -1328,7 +1331,7 @@ public:
             return nullptr;
 
         CCar* nearestCar = nullptr;
-        float nearestDistanceSquared = 16.0f;
+        float nearestDistanceSquared = WANG_CAR_SPAWN_MATCH_DISTANCE_SQUARED;
         CVector nearestPosition = {};
         int activeCarsRead = 0;
         int poolCarsRead = 0;
@@ -1429,6 +1432,20 @@ public:
                 wangCar.trackedFromPool = false;
             }
 
+            // Script deletion can leave an inactive car-pool slot containing
+            // GT-A1 data at the common Wang processing location. Do not keep
+            // following that stale slot after it leaves its original placement.
+            if (wangCar.car && wangCar.trackedFromPool &&
+                spawnDistanceSquared > WANG_CAR_SPAWN_MATCH_DISTANCE_SQUARED) {
+                RadarLog("Wang car inactive pool entry left spawn: index=%d spawn=%.2f,%.2f pos=%.2f,%.2f distSq=%.3f; treating as collected",
+                    i + 1, wangCar.spawnPosition.x, wangCar.spawnPosition.y,
+                    position.x, position.y, spawnDistanceSquared);
+                wangCar.car = nullptr;
+                wangCar.collected = true;
+                wangCar.trackedFromPool = false;
+                continue;
+            }
+
             if (!wangCar.car) {
                 wangCar.car = FindWangCar(manager, wangCar, wangCar.trackedFromPool, shouldLog);
                 if (wangCar.car) {
@@ -1513,6 +1530,7 @@ public:
         static constexpr int objectSlotSize = 44;
         int readSlots = 0;
         int matched = 0;
+        int iconOnlyExcluded = 0;
         int disabledByGroup = 0;
         int readFailures = 0;
         int outOfBounds = 0;
@@ -1526,6 +1544,13 @@ public:
                 continue;
 
             readSlots++;
+
+            // Model 150 shares its numeric ID with the Wang icon file, but in
+            // the map object list it represents crane/crusher scenery.
+            if (model == 150) {
+                iconOnlyExcluded++;
+                continue;
+            }
 
             const tPickupBlip* pickup = FindPickupBlip(model);
             if (!pickup)
@@ -1598,8 +1623,8 @@ public:
         }
 
         if (shouldLog) {
-            RadarLog("pickup scan: source=(%s) scanStart=0x%08X slots=%d matched=%d disabledByGroup=%d readFailures=%d outOfBounds=%d hiddenByDistance=%d drawn=%d range=%.2f origin=%.2f,%.2f",
-                scanSource, scanStart, readSlots, matched, disabledByGroup, readFailures, outOfBounds, hiddenByDistance, drawn, radarRange, radarOrigin.x, radarOrigin.y);
+            RadarLog("pickup scan: source=(%s) scanStart=0x%08X slots=%d matched=%d iconOnlyExcluded=%d disabledByGroup=%d readFailures=%d outOfBounds=%d hiddenByDistance=%d drawn=%d range=%.2f origin=%.2f,%.2f",
+                scanSource, scanStart, readSlots, matched, iconOnlyExcluded, disabledByGroup, readFailures, outOfBounds, hiddenByDistance, drawn, radarRange, radarOrigin.x, radarOrigin.y);
         }
     }
 
