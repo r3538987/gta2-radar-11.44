@@ -217,6 +217,7 @@ struct tVehicleFrenzyBlip {
     CCar* car;
     bool activated;
     bool leftSpawnAfterActivation;
+    bool trackedFromPool;
 };
 
 // Stock PARKED_CAR_DATA entries used by START_BASIC_KF_TEMPLATE in the
@@ -942,6 +943,60 @@ public:
         return nearestCar;
     }
 
+    static CCar* FindVehicleFrenzyCarInPool(CCarManager* manager, const tVehicleFrenzyBlip& frenzy, bool shouldLog) {
+        if (!manager)
+            return nullptr;
+
+        CCar* nearestCar = nullptr;
+        float nearestDistanceSquared = 16.0f;
+        CVector nearestPosition = {};
+        short nearestRemap = 0;
+        int readableCars = 0;
+        int modelMatches = 0;
+        int remapMatches = 0;
+
+        for (int i = 0; i < 306; i++) {
+            CCar* car = &manager->m_aCars[i];
+            CVector position;
+            unsigned int model = 0;
+            short remap = 0;
+            if (!TryGetCarBlipData(car, position, model, remap))
+                continue;
+
+            readableCars++;
+            if (position.x < 0.0f || position.x > RADAR_SIZE_X ||
+                position.y < 0.0f || position.y > RADAR_SIZE_Y || model != frenzy.model) {
+                continue;
+            }
+
+            modelMatches++;
+            if (frenzy.remap >= 0 && remap != frenzy.remap)
+                continue;
+
+            remapMatches++;
+            float dx = position.x - frenzy.spawnPosition.x;
+            float dy = position.y - frenzy.spawnPosition.y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared <= nearestDistanceSquared) {
+                nearestDistanceSquared = distanceSquared;
+                nearestPosition = position;
+                nearestRemap = remap;
+                nearestCar = car;
+            }
+        }
+
+        if (shouldLog) {
+            RadarLog("vehicle frenzy pool candidate: map=%s model=%u remap=%d spawn=%.2f,%.2f,%.2f readable=%d modelMatches=%d remapMatches=%d nearestDistSq=%.3f nearestPos=%.2f,%.2f,%.2f nearestRemap=%d matched=0x%08X",
+                frenzy.mapName, frenzy.model, frenzy.remap,
+                frenzy.spawnPosition.x, frenzy.spawnPosition.y, frenzy.spawnPosition.z,
+                readableCars, modelMatches, remapMatches, nearestCar ? nearestDistanceSquared : -1.0f,
+                nearestPosition.x, nearestPosition.y, nearestPosition.z, nearestRemap,
+                reinterpret_cast<uintptr_t>(nearestCar));
+        }
+
+        return nearestCar;
+    }
+
     static void DrawVehicleFrenzyBlips() {
         if (!EnablePickupBlips || !EnableFrenzyPickupBlips)
             return;
@@ -1010,6 +1065,7 @@ public:
                             frenzy.car = respawnedCar;
                             frenzy.activated = false;
                             frenzy.leftSpawnAfterActivation = false;
+                            frenzy.trackedFromPool = false;
                             RadarLog("vehicle frenzy rearmed at spawn: map=%s model=%u remap=%d spawn=%.2f,%.2f,%.2f previousCar=0x%08X respawnedCar=0x%08X reusedSlot=%d",
                                 frenzy.mapName, frenzy.model, frenzy.remap,
                                 frenzy.spawnPosition.x, frenzy.spawnPosition.y, frenzy.spawnPosition.z,
@@ -1039,6 +1095,7 @@ public:
                         reinterpret_cast<uintptr_t>(frenzy.car));
                     frenzy.car = nullptr;
                     frenzy.leftSpawnAfterActivation = true;
+                    frenzy.trackedFromPool = false;
                 }
 
                 if (frenzy.activated) {
@@ -1049,6 +1106,7 @@ public:
                     frenzy.car = respawnedCar;
                     frenzy.activated = false;
                     frenzy.leftSpawnAfterActivation = false;
+                    frenzy.trackedFromPool = false;
                     RadarLog("vehicle frenzy rearmed: map=%s model=%u remap=%d spawn=%.2f,%.2f,%.2f car=0x%08X",
                         frenzy.mapName, frenzy.model, frenzy.remap,
                         frenzy.spawnPosition.x, frenzy.spawnPosition.y, frenzy.spawnPosition.z,
@@ -1056,16 +1114,26 @@ public:
                 }
             }
 
-            if (frenzy.car && !IsCarInManager(manager, frenzy.car)) {
-                RadarLog("vehicle frenzy car lost: map=%s model=%u spawn=%.2f,%.2f car=0x%08X",
-                    frenzy.mapName, frenzy.model, frenzy.spawnPosition.x, frenzy.spawnPosition.y,
-                    reinterpret_cast<uintptr_t>(frenzy.car));
-                frenzy.car = nullptr;
+            if (frenzy.car) {
+                bool carIsActive = IsCarInManager(manager, frenzy.car);
+                if (frenzy.trackedFromPool && carIsActive) {
+                    frenzy.trackedFromPool = false;
+                    RadarLog("vehicle frenzy pool car became active: map=%s model=%u spawn=%.2f,%.2f car=0x%08X",
+                        frenzy.mapName, frenzy.model, frenzy.spawnPosition.x, frenzy.spawnPosition.y,
+                        reinterpret_cast<uintptr_t>(frenzy.car));
+                }
+                else if (!frenzy.trackedFromPool && !carIsActive) {
+                    RadarLog("vehicle frenzy car lost: map=%s model=%u spawn=%.2f,%.2f car=0x%08X",
+                        frenzy.mapName, frenzy.model, frenzy.spawnPosition.x, frenzy.spawnPosition.y,
+                        reinterpret_cast<uintptr_t>(frenzy.car));
+                    frenzy.car = nullptr;
+                }
             }
 
             if (!frenzy.car) {
                 frenzy.car = FindVehicleFrenzyCar(manager, frenzy, shouldLog);
                 if (frenzy.car) {
+                    frenzy.trackedFromPool = false;
                     RadarLog("vehicle frenzy matched: map=%s model=%u remap=%d spawn=%.2f,%.2f,%.2f car=0x%08X",
                         frenzy.mapName, frenzy.model, frenzy.remap,
                         frenzy.spawnPosition.x, frenzy.spawnPosition.y, frenzy.spawnPosition.z,
@@ -1073,8 +1141,77 @@ public:
                 }
             }
 
-            if (!frenzy.car)
+            if (!frenzy.car) {
+                frenzy.car = FindVehicleFrenzyCarInPool(manager, frenzy, shouldLog);
+                if (frenzy.car) {
+                    frenzy.trackedFromPool = true;
+                    RadarLog("vehicle frenzy matched in pool: map=%s model=%u remap=%d spawn=%.2f,%.2f,%.2f car=0x%08X",
+                        frenzy.mapName, frenzy.model, frenzy.remap,
+                        frenzy.spawnPosition.x, frenzy.spawnPosition.y, frenzy.spawnPosition.z,
+                        reinterpret_cast<uintptr_t>(frenzy.car));
+                }
+            }
+
+            if (!frenzy.car) {
+                if (playerCar) {
+                    CVector playerCarPosition;
+                    unsigned int playerCarModel = 0;
+                    short playerCarRemap = 0;
+                    if (TryGetCarBlipData(playerCar, playerCarPosition, playerCarModel, playerCarRemap)) {
+                        float dx = playerCarPosition.x - frenzy.spawnPosition.x;
+                        float dy = playerCarPosition.y - frenzy.spawnPosition.y;
+                        float distanceSquared = dx * dx + dy * dy;
+                        bool remapMatches = frenzy.remap < 0 || playerCarRemap == frenzy.remap;
+                        if (playerCarModel == frenzy.model && remapMatches && distanceSquared <= 16.0f) {
+                            frenzy.car = playerCar;
+                            frenzy.activated = true;
+                            frenzy.leftSpawnAfterActivation = distanceSquared > 2.25f;
+                            frenzy.trackedFromPool = false;
+                            RadarLog("vehicle frenzy activated from unresolved spawn: map=%s model=%u remap=%d spawn=%.2f,%.2f,%.2f carPos=%.2f,%.2f,%.2f distSq=%.3f car=0x%08X",
+                                frenzy.mapName, playerCarModel, playerCarRemap,
+                                frenzy.spawnPosition.x, frenzy.spawnPosition.y, frenzy.spawnPosition.z,
+                                playerCarPosition.x, playerCarPosition.y, playerCarPosition.z,
+                                distanceSquared, reinterpret_cast<uintptr_t>(playerCar));
+                            continue;
+                        }
+                    }
+                }
+
+                CVector2D radarPosition = {};
+                CVector2D screenPosition = {};
+                TransformRealWorldPointToRadarSpace(radarPosition,
+                    { frenzy.spawnPosition.x, frenzy.spawnPosition.y });
+                float distance = LimitRadarPoint(radarPosition);
+                if (distance > PickupBlipMaxDistance) {
+                    if (shouldLog) {
+                        RadarLog("vehicle frenzy unresolved spawn hidden: map=%s model=%u remap=%d spawn=%.2f,%.2f,%.2f distance=%.2f maxDistance=%.2f",
+                            frenzy.mapName, frenzy.model, frenzy.remap,
+                            frenzy.spawnPosition.x, frenzy.spawnPosition.y, frenzy.spawnPosition.z,
+                            distance, PickupBlipMaxDistance);
+                    }
+                    continue;
+                }
+
+                TransformRadarPointToScreenSpace(screenPosition, radarPosition);
+
+                int level = 0;
+                float heightDifference = playa->GetPed()->GetPosition().FromInt16().z - frenzy.spawnPosition.z;
+                if (heightDifference > 0.1f)
+                    level = 1;
+                else if (heightDifference < -0.1f)
+                    level = 2;
+
+                CRGBA color = frenzyPickup->color;
+                color.a = CalculateBlipAlpha(distance);
+                DrawPickupMarker(frenzyPickup, screenPosition, level, color);
+                if (shouldLog) {
+                    RadarLog("vehicle frenzy unresolved spawn drawn: map=%s model=%u remap=%d spawn=%.2f,%.2f,%.2f distance=%.2f screen=%.1f,%.1f",
+                        frenzy.mapName, frenzy.model, frenzy.remap,
+                        frenzy.spawnPosition.x, frenzy.spawnPosition.y, frenzy.spawnPosition.z,
+                        distance, screenPosition.x, screenPosition.y);
+                }
                 continue;
+            }
 
             if (playerCar == frenzy.car) {
                 RadarLog("vehicle frenzy activated: map=%s model=%u spawn=%.2f,%.2f car=0x%08X",
@@ -1082,6 +1219,7 @@ public:
                     reinterpret_cast<uintptr_t>(frenzy.car));
                 frenzy.activated = true;
                 frenzy.leftSpawnAfterActivation = false;
+                frenzy.trackedFromPool = false;
                 continue;
             }
 
@@ -1094,6 +1232,18 @@ public:
                         frenzy.mapName, frenzy.spawnPosition.x, frenzy.spawnPosition.y,
                         reinterpret_cast<uintptr_t>(frenzy.car));
                 }
+                frenzy.car = nullptr;
+                frenzy.trackedFromPool = false;
+                continue;
+            }
+
+            bool remapMatches = frenzy.remap < 0 || remap == frenzy.remap;
+            if (model != frenzy.model || !remapMatches) {
+                RadarLog("vehicle frenzy tracked car changed: map=%s expectedModel=%u expectedRemap=%d actualModel=%u actualRemap=%d car=0x%08X",
+                    frenzy.mapName, frenzy.model, frenzy.remap, model, remap,
+                    reinterpret_cast<uintptr_t>(frenzy.car));
+                frenzy.car = nullptr;
+                frenzy.trackedFromPool = false;
                 continue;
             }
 
@@ -1467,6 +1617,7 @@ public:
                 frenzy.car = nullptr;
                 frenzy.activated = false;
                 frenzy.leftSpawnAfterActivation = false;
+                frenzy.trackedFromPool = false;
                 if (!strcmp(frenzy.mapName, currentMapName))
                     vehicleFrenzyDefinitions++;
             }
