@@ -165,6 +165,7 @@ static const tPickupBlip pickupBlips[] = {
     { 128, PICKUP_GROUP_OTHER,   CRGBA(210, 210, 210, 255) },
     { 138, PICKUP_GROUP_OTHER,   CRGBA(210, 210, 210, 255) },
     { 149, PICKUP_GROUP_VEHICLE, CRGBA(210, 210, 210, 255) },
+    { 150, PICKUP_GROUP_VEHICLE, CRGBA(255, 160, 40, 255) },
     { 182, PICKUP_GROUP_OTHER,   CRGBA(210, 210, 210, 255) },
     { 183, PICKUP_GROUP_OTHER,   CRGBA(210, 210, 210, 255) },
     { 200, PICKUP_GROUP_WEAPON,  CRGBA(90, 180, 255, 255) },
@@ -241,8 +242,31 @@ static tVehicleFrenzyBlip vehicleFrenzyBlips[] = {
     { "bil", { 246.50f,  26.50f, 2.00f }, MODEL_XK120,    9, nullptr, false },
 };
 
+struct tWangCarBlip {
+    CVector spawnPosition;
+    CCar* car;
+    bool collected;
+    bool trackedFromPool;
+};
+
+// The eight script-placed GT-A1 cars used by the Wang Cars collection on
+// ste.scr. Match them by model and original placement instead of colour/remap:
+// the script values 90/180/270 are rotations. Once found, retain the car object
+// so its blip follows it while map cranes or other scripted transport move it.
+static tWangCarBlip wangCarBlips[] = {
+    { { 229.50f, 178.00f, 0.00f }, nullptr, false, false },
+    { {  58.50f,   3.50f, 0.00f }, nullptr, false, false },
+    { {   3.00f, 207.00f, 0.00f }, nullptr, false, false },
+    { { 139.00f, 254.00f, 0.00f }, nullptr, false, false },
+    { { 184.50f, 202.50f, 0.00f }, nullptr, false, false },
+    { {  93.50f,  53.50f, 0.00f }, nullptr, false, false },
+    { { 127.00f,  47.00f, 0.00f }, nullptr, false, false },
+    { { 216.00f, 117.00f, 0.00f }, nullptr, false, false },
+};
+
 static char currentMapName[32] = {};
 static unsigned int vehicleFrenzyLogFrame = 0;
+static unsigned int wangCarLogFrame = 0;
 
 static IDirect3DDevice3* TryGetRadarD3DDevice() {
     if (!GetModuleHandleA("d3ddll.dll"))
@@ -1280,6 +1304,184 @@ public:
         }
     }
 
+    static bool TryMatchWangCar(CCar* car, const tWangCarBlip& wangCar,
+        CVector& position, float& distanceSquared) {
+        unsigned int model = 0;
+        short remap = 0;
+        if (!TryGetCarBlipData(car, position, model, remap) ||
+            model != MODEL_GT24640 ||
+            position.x < 0.0f || position.x > RADAR_SIZE_X ||
+            position.y < 0.0f || position.y > RADAR_SIZE_Y) {
+            return false;
+        }
+
+        float dx = position.x - wangCar.spawnPosition.x;
+        float dy = position.y - wangCar.spawnPosition.y;
+        distanceSquared = dx * dx + dy * dy;
+        return true;
+    }
+
+    static CCar* FindWangCar(CCarManager* manager, const tWangCarBlip& wangCar,
+        bool& trackedFromPool, bool shouldLog) {
+        trackedFromPool = false;
+        if (!manager)
+            return nullptr;
+
+        CCar* nearestCar = nullptr;
+        float nearestDistanceSquared = 16.0f;
+        CVector nearestPosition = {};
+        int activeCarsRead = 0;
+        int poolCarsRead = 0;
+
+        CCar* car = nullptr;
+        if (TryRead(reinterpret_cast<uintptr_t>(&manager->m_pLast), car)) {
+            for (int i = 0; car && i < 306; i++) {
+                CCar* next = nullptr;
+                bool nextRead = TryRead(reinterpret_cast<uintptr_t>(&car->m_pLastCar), next);
+
+                CVector position;
+                float distanceSquared = 0.0f;
+                if (TryMatchWangCar(car, wangCar, position, distanceSquared)) {
+                    activeCarsRead++;
+                    if (distanceSquared <= nearestDistanceSquared) {
+                        nearestDistanceSquared = distanceSquared;
+                        nearestPosition = position;
+                        nearestCar = car;
+                    }
+                }
+
+                if (!nextRead)
+                    break;
+                car = next;
+            }
+        }
+
+        if (!nearestCar) {
+            trackedFromPool = true;
+            for (int i = 0; i < 306; i++) {
+                car = &manager->m_aCars[i];
+                CVector position;
+                float distanceSquared = 0.0f;
+                if (!TryMatchWangCar(car, wangCar, position, distanceSquared))
+                    continue;
+
+                poolCarsRead++;
+                if (distanceSquared <= nearestDistanceSquared) {
+                    nearestDistanceSquared = distanceSquared;
+                    nearestPosition = position;
+                    nearestCar = car;
+                }
+            }
+        }
+
+        if (!nearestCar)
+            trackedFromPool = false;
+
+        if (shouldLog) {
+            RadarLog("Wang car candidate: model=%u spawn=%.2f,%.2f activeMatches=%d poolMatches=%d nearestDistSq=%.3f nearestPos=%.2f,%.2f,%.2f matched=0x%08X fromPool=%d",
+                static_cast<unsigned int>(MODEL_GT24640), wangCar.spawnPosition.x, wangCar.spawnPosition.y,
+                activeCarsRead, poolCarsRead, nearestCar ? nearestDistanceSquared : -1.0f,
+                nearestPosition.x, nearestPosition.y, nearestPosition.z,
+                reinterpret_cast<uintptr_t>(nearestCar), trackedFromPool);
+        }
+
+        return nearestCar;
+    }
+
+    static void DrawWangCarBlips() {
+        if (!EnablePickupBlips || !EnableVehiclePickupBlips || strcmp(currentMapName, "ste"))
+            return;
+
+        wangCarLogFrame++;
+        const bool shouldLog = EnablePickupBlipLog &&
+            (wangCarLogFrame == 1 || (wangCarLogFrame % 300) == 0);
+
+        const tPickupBlip* wangIcon = FindPickupBlip(150);
+        CPlayerPed* playa = GetGame()->FindPlayerPed(0);
+        CCarManager* manager = nullptr;
+        TryRead(reinterpret_cast<uintptr_t>(gCarManager), manager);
+        if (!wangIcon || !playa || !playa->GetPed() || !manager)
+            return;
+
+        CCar* playerCar = playa->GetPed()->m_pCurrentCar;
+
+        for (int i = 0; i < static_cast<int>(sizeof(wangCarBlips) / sizeof(wangCarBlips[0])); i++) {
+            auto& wangCar = wangCarBlips[i];
+            if (wangCar.collected)
+                continue;
+
+            if (wangCar.car) {
+                bool carIsActive = IsCarInManager(manager, wangCar.car);
+                if (wangCar.trackedFromPool && carIsActive) {
+                    wangCar.trackedFromPool = false;
+                    RadarLog("Wang car became active: index=%d car=0x%08X", i + 1,
+                        reinterpret_cast<uintptr_t>(wangCar.car));
+                }
+                else if (!wangCar.trackedFromPool && !carIsActive) {
+                    wangCar.car = nullptr;
+                }
+            }
+
+            CVector position;
+            float spawnDistanceSquared = 0.0f;
+            if (wangCar.car && !TryMatchWangCar(wangCar.car, wangCar, position, spawnDistanceSquared)) {
+                wangCar.car = nullptr;
+                wangCar.trackedFromPool = false;
+            }
+
+            if (!wangCar.car) {
+                wangCar.car = FindWangCar(manager, wangCar, wangCar.trackedFromPool, shouldLog);
+                if (wangCar.car) {
+                    RadarLog("Wang car matched: index=%d model=%u spawn=%.2f,%.2f car=0x%08X fromPool=%d",
+                        i + 1, static_cast<unsigned int>(MODEL_GT24640), wangCar.spawnPosition.x, wangCar.spawnPosition.y,
+                        reinterpret_cast<uintptr_t>(wangCar.car), wangCar.trackedFromPool);
+                }
+            }
+
+            if (!wangCar.car)
+                continue;
+
+            if (playerCar == wangCar.car) {
+                wangCar.collected = true;
+                wangCar.car = nullptr;
+                wangCar.trackedFromPool = false;
+                RadarLog("Wang car collected: index=%d model=%u", i + 1,
+                    static_cast<unsigned int>(MODEL_GT24640));
+                continue;
+            }
+
+            unsigned int model = 0;
+            short remap = 0;
+            if (!TryGetCarBlipData(wangCar.car, position, model, remap))
+                continue;
+
+            CVector2D radarPosition = {};
+            CVector2D screenPosition = {};
+            TransformRealWorldPointToRadarSpace(radarPosition, { position.x, position.y });
+            float distance = LimitRadarPoint(radarPosition);
+            if (distance > PickupBlipMaxDistance)
+                continue;
+
+            TransformRadarPointToScreenSpace(screenPosition, radarPosition);
+
+            int level = 0;
+            float heightDifference = playa->GetPed()->GetPosition().FromInt16().z - position.z;
+            if (heightDifference > 0.1f)
+                level = 1;
+            else if (heightDifference < -0.1f)
+                level = 2;
+
+            CRGBA color = wangIcon->color;
+            color.a = CalculateBlipAlpha(distance);
+            DrawPickupMarker(wangIcon, screenPosition, level, color);
+            if (shouldLog) {
+                RadarLog("Wang car drawn: index=%d remap=%d pos=%.2f,%.2f,%.2f distance=%.2f car=0x%08X fromPool=%d",
+                    i + 1, remap, position.x, position.y, position.z, distance,
+                    reinterpret_cast<uintptr_t>(wangCar.car), wangCar.trackedFromPool);
+            }
+        }
+    }
+
     static void DrawPickupBlips() {
         if (!EnablePickupBlips)
             return;
@@ -1527,6 +1729,7 @@ public:
 
         DrawPickupBlips();
         DrawVehicleFrenzyBlips();
+        DrawWangCarBlips();
         DrawRadarCentre();
     }
 
@@ -1612,6 +1815,7 @@ public:
             strncpy(currentMapName, mapName, sizeof(currentMapName) - 1);
             currentMapName[sizeof(currentMapName) - 1] = '\0';
             vehicleFrenzyLogFrame = 0;
+            wangCarLogFrame = 0;
             int vehicleFrenzyDefinitions = 0;
             for (auto& frenzy : vehicleFrenzyBlips) {
                 frenzy.car = nullptr;
@@ -1623,6 +1827,15 @@ public:
             }
             RadarLog("vehicle frenzy init: map=%s definitions=%d managerGlobal=0x%08X",
                 currentMapName, vehicleFrenzyDefinitions, reinterpret_cast<uintptr_t>(gCarManager));
+            for (auto& wangCar : wangCarBlips) {
+                wangCar.car = nullptr;
+                wangCar.collected = false;
+                wangCar.trackedFromPool = false;
+            }
+            RadarLog("Wang car init: map=%s definitions=%d enabled=%d",
+                currentMapName, !strcmp(currentMapName, "ste") ?
+                    static_cast<int>(sizeof(wangCarBlips) / sizeof(wangCarBlips[0])) : 0,
+                EnableVehiclePickupBlips);
 
             // Hardcoded blips
             hardCodedBlips.clear();
