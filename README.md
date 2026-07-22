@@ -1,16 +1,11 @@
-# GTA2 Radar From GTA3
-This is a backport of GTA3's radar mini map to GTA2, made thanks to re3 project.
-Some changes have been made in order to make it work correctly in GTA2 but the base code is still the same.
+<p align="center"><img src="https://i.imgur.com/aZlfo4C.png" width="400"> <br/></p>
 
-## References:
+# TLDR: 
+This is fork of [GTA2 Radar mod made by _AG](https://github.com/gennariarmando/gta2-radar), but compiled so it's compatible with v11.44. 
+Plus various additional options were added from other GTA2 projects.
 
-- [gta2-radar by Sektor](https://gtamp.com/forum/viewtopic.php?f=4&t=818) was used as a reference for this project.
-
-Experiment results:
-<p align="center">
-<img src="https://i.imgur.com/TjvKrYh.jpeg" width="300" height="300">
-<img src="https://i.imgur.com/ts2VPXP.jpeg" height="300"> <br/>
-</p>
+_GTA2 Radar from GTA3. This is a backport of GTA3's radar mini map to GTA2, made thanks to re3 project.
+Some changes have been made in order to make it work correctly in GTA2 but the base code is still the same._
 
 ## Features:
  - Full Map for each districts and bonus levels.
@@ -20,6 +15,14 @@ Experiment results:
  - Larger radar on the paused current-level stats screen.
  - Low quality assets.
  - Ability to add new radar tiles for custom levels.
+ - Pickup blips or icons on radar, based on [gta2-radar by Sektor](https://gtamp.com/forum/viewtopic.php?f=4&t=818).
+ - Bigger pause screen radar
+
+Experiment results:
+<p align="center">
+<img src="https://i.imgur.com/TjvKrYh.jpeg" width="300" height="300">
+<img src="https://i.imgur.com/ts2VPXP.jpeg" height="300"> <br/>
+</p>
 
 ## Configuration:
 Create or edit `scripts\GTA2Radar.ini` to override defaults:
@@ -66,18 +69,7 @@ PickupIconReferenceSize=30.0
 EnablePickupBlipLog=0
 ```
 
-`RadarBlipsSize` controls all gameplay radar icons, including the original radar blips and pickup icons. `PauseRadarBlipsSize` controls those same icons while the pause radar is active.
-`EnablePauseStatsRadar=1` shows the larger radar on the paused current-level stats screen. Set it to `0` to keep the game's default pause/stats screen behavior.
-The gameplay radar uses `data\hud\radar_rect.dds`; the large pause radar uses `data\hud\radar_rect_256x256.dds` and falls back to the gameplay border if that file is missing.
-Set `PauseRadarLeft=-1` or `PauseRadarBottom=-1` to auto-center that axis using the current WidescreenFix-expanded screen resolution.
-`EnablePauseStatsLayout=1` moves the game's original current-level stats text and stats image/sprite while the large pause radar is enabled; adjust `PauseStatsTextY` and `PauseStatsSpriteY` if they overlap the pause radar. These layout values are ignored when `EnablePauseStatsRadar=0`.
-
-Pickup blip groups are: vehicle (`149`), weapons (`200`-`223`), bonuses (`228`-`240`), token (`266`), frenzy (`286`), and other legacy object IDs. `EnableFrenzyPickupBlips=1` also marks the 14 vehicle-bound frenzies in the stock `wil`, `ste`, and `bil` scripts; those blips follow the live car and disappear when the player enters it.
-When `EnablePickupIcons=1`, pickup blips use numeric HUD icons from `data\hud\<model>.dds` such as `data\hud\201.dds`. Missing icons automatically fall back to the colored marker.
-`PickupIconReferenceSize` controls texture-size scaling. At the default `30.0`, a 30x30 icon uses the normal blip size, while wider or taller textures can extend beyond that square without being shrunk to fit it. Lower values make textured pickup icons larger; higher values make them smaller.
-
-When pickup logging is enabled, scan diagnostics are written to `scripts\GTA2Radar.log`.
- 
+# Rest of original README.md 
 ## Screenshots:
 <p align="center">
 <img src="https://i.imgur.com/TSIEHVP.png" width="320" height="180">
