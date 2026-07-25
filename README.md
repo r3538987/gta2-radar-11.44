@@ -55,13 +55,13 @@ PauseRadarRange=100.0           # How zoomed out the radar is.
 ; PauseRadarAutoOffsetX=-256.0
 
 ; Pickup blip settings
-EnablePickupIcons=1             # 1 = uses icons for pickups from data\hud\xxx.dds, 0 = colored markers
-EnableVehiclePickupBlips=1      # VAN car with antenna pointing towards level start location (model ID 149)
-EnableWeaponPickupBlips=1       # Shows weapon pickups (primarily models IDs 200–223)
+EnablePickupIcons=1             # 1 = uses icons for pickups from data\hud\*.dds, 0 = colored markers
+EnableVehiclePickupBlips=1      # Script-placed Wang Cars (ID 150)
+EnableWeaponPickupBlips=0       # Shows weapon pickups (primarily models IDs 200–223)
 EnableBonusPickupBlips=1        # Shows bonuses and power-ups (model IDs 228–240)
 EnableTokenPickupBlips=1        # Shows collectible tokens (model ID 266)
-EnableFrenzyPickupBlips=1       # Shows the kill-frenzy pickup (model ID 286)
-EnableOtherPickupBlips=1        # Shows placed mines (ID 10) and PEW PEW text for bulled projectiles (ID 13, 56, 128, 138, 182, 183, 254, and 265)
+EnableFrenzyPickupBlips=1       # Shows kill-frenzy pickups and vehicle-bound frenzies
+EnableOtherBlips=0              # Antenna VAN (149), placed mines (10), and other PEW PEW objects (13, 56, 128, 138, 182, 183, 254, 265)
 PickupBlipMaxDistance=1.1
 PickupIconReferenceSize=30.0
 
