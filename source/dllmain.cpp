@@ -46,10 +46,22 @@
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 
 using namespace plugin;
 
 static config_file config(PLUGIN_PATH("GTA2Radar.ini"));
+
+static unsigned int ReadHotkey(const char* name, unsigned int defaultValue) {
+    std::string text = config[name].asString("");
+    if (text.empty())
+        return defaultValue;
+
+    char* end = nullptr;
+    unsigned long value = std::strtoul(text.c_str(), &end, 0);
+    return end != text.c_str() && value <= 0xFF ? static_cast<unsigned int>(value) : defaultValue;
+}
+
 static int EnableBuiltinArrows = config["EnableBuiltinArrows"].asInt(0);
 static float DynamicArrowsDistance = config["DynamicArrowsDistance"].asFloat(1.0);
 static float RadarBlipsSize = config["RadarBlipsSize"].asFloat(RADAR_BLIPS_SIZE);
@@ -71,6 +83,13 @@ static int EnableBonusPickupBlips = config["EnableBonusPickupBlips"].asInt(1);
 static int EnableTokenPickupBlips = config["EnableTokenPickupBlips"].asInt(1);
 static int EnableFrenzyPickupBlips = config["EnableFrenzyPickupBlips"].asInt(1);
 static int EnableOtherBlips = config["EnableOtherBlips"].asInt(1);
+static unsigned int ToggleTokenBlips = ReadHotkey("ToggleTokenBlips", '1');
+static unsigned int ToggleWeaponBlips = ReadHotkey("ToggleWeaponBlips", '2');
+static unsigned int ToggleBonusBlips = ReadHotkey("ToggleBonusBlips", '3');
+static unsigned int ToggleFrenzyBlips = ReadHotkey("ToggleFrenzyBlips", '4');
+static unsigned int ToggleVehicleBlips = ReadHotkey("ToggleVehicleBlips", '5');
+static unsigned int ToggleOtherBlips = ReadHotkey("ToggleOtherBlips", '6');
+static unsigned int ToggleAllPickupBlips = ReadHotkey("ToggleAllPickupBlips", '0');
 static int EnablePickupBlipLog = config["EnablePickupBlipLog"].asInt(1);
 static float PickupBlipMaxDistance = config["PickupBlipMaxDistance"].asFloat(1.1f);
 static float PickupIconReferenceSize = config["PickupIconReferenceSize"].asFloat(30.0f);
@@ -333,6 +352,63 @@ static void ResetRadarLog() {
 
 class GTA2Radar {
 public:
+    static void ProcessBlipToggleHotkeys() {
+        static bool wasDown[7] = {};
+        DWORD foregroundProcessId = 0;
+        GetWindowThreadProcessId(GetForegroundWindow(), &foregroundProcessId);
+        if (foregroundProcessId != GetCurrentProcessId()) {
+            for (bool& down : wasDown)
+                down = false;
+            return;
+        }
+
+        const unsigned int keys[] = {
+            ToggleTokenBlips,
+            ToggleWeaponBlips,
+            ToggleBonusBlips,
+            ToggleFrenzyBlips,
+            ToggleVehicleBlips,
+            ToggleOtherBlips,
+            ToggleAllPickupBlips,
+        };
+        int* states[] = {
+            &EnableTokenPickupBlips,
+            &EnableWeaponPickupBlips,
+            &EnableBonusPickupBlips,
+            &EnableFrenzyPickupBlips,
+            &EnableVehiclePickupBlips,
+            &EnableOtherBlips,
+            &EnablePickupBlips,
+        };
+        const char* names[] = {
+            "tokens",
+            "weapons",
+            "bonuses",
+            "frenzies",
+            "Wang cars",
+            "other",
+            "all pickups",
+        };
+
+        for (int i = 0; i < 7; i++) {
+            bool down = keys[i] != 0 && (GetAsyncKeyState(keys[i]) & 0x8000) != 0;
+            if (down && !wasDown[i]) {
+                *states[i] = !*states[i];
+                if (i == 6 && EnablePickupBlips) {
+                    EnableTokenPickupBlips = 1;
+                    EnableWeaponPickupBlips = 1;
+                    EnableBonusPickupBlips = 1;
+                    EnableFrenzyPickupBlips = 1;
+                    EnableVehiclePickupBlips = 1;
+                    EnableOtherBlips = 1;
+                }
+                RadarLog("blip hotkey: category=%s key=0x%02X enabled=%d",
+                    names[i], keys[i], *states[i]);
+            }
+            wasDown[i] = down;
+        }
+    }
+
     static void SetRadarViewport(float left, float bottom, float width, float height, float blipSize) {
         radarViewport.left = left;
         radarViewport.bottom = bottom;
@@ -1923,6 +1999,8 @@ public:
         };
 
         plugin::Events::drawHudEvent += []() {
+            ProcessBlipToggleHotkeys();
+
             if (GetGame()->GetIsUserPaused() && EnablePauseStatsRadar) {
                 DrawRadarWidget(PauseRadarLeft, PauseRadarBottom, PauseRadarWidth, PauseRadarHeight,
                     PauseRadarBlipsSize, PauseRadarRange, true);

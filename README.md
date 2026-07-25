@@ -65,6 +65,15 @@ EnableOtherBlips=0              # Antenna VAN (149), placed mines (10), and othe
 PickupBlipMaxDistance=1.1
 PickupIconReferenceSize=30.0
 
+; Runtime blip toggle hotkeys (Windows virtual-key codes; 0 disables a key)
+ToggleTokenBlips=0x31           # 1
+ToggleWeaponBlips=0x32          # 2
+ToggleBonusBlips=0x33           # 3
+ToggleFrenzyBlips=0x34          # 4, including vehicle-bound frenzies
+ToggleVehicleBlips=0x35         # 5, Wang Cars
+ToggleOtherBlips=0x36           # 6, including antenna VAN model 149
+ToggleAllPickupBlips=0x30       # 0, hides all; press again to enable every pickup category
+
 ; Diagnostics
 EnablePickupBlipLog=0
 ```
