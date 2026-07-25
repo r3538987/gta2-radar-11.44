@@ -239,8 +239,8 @@ static tVehicleFrenzyBlip vehicleFrenzyBlips[] = {
 
     { "bil", {   3.00f,  30.00f, 3.00f }, MODEL_TANK,     0, nullptr, false },
     { "bil", {  72.00f, 219.50f, 2.00f }, MODEL_TANK,     0, nullptr, false },
-    { "bil", {  71.00f, 241.00f, 2.00f }, MODEL_JEEP,    -1, nullptr, false },
-    { "bil", { 156.00f, 146.00f, 4.00f }, MODEL_JEFFREY,  2, nullptr, false },
+    { "bil", {  71.00f, 241.00f, 2.00f }, MODEL_GUNJEEP, -1, nullptr, false },
+    { "bil", { 155.00f, 146.50f, 4.00f }, MODEL_JEFFREY,  2, nullptr, false },
     { "bil", { 246.50f,  26.50f, 2.00f }, MODEL_XK120,    9, nullptr, false },
 };
 
