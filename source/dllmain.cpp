@@ -70,7 +70,7 @@ static int EnableWeaponPickupBlips = config["EnableWeaponPickupBlips"].asInt(1);
 static int EnableBonusPickupBlips = config["EnableBonusPickupBlips"].asInt(1);
 static int EnableTokenPickupBlips = config["EnableTokenPickupBlips"].asInt(1);
 static int EnableFrenzyPickupBlips = config["EnableFrenzyPickupBlips"].asInt(1);
-static int EnableOtherPickupBlips = config["EnableOtherPickupBlips"].asInt(1);
+static int EnableOtherBlips = config["EnableOtherBlips"].asInt(1);
 static int EnablePickupBlipLog = config["EnablePickupBlipLog"].asInt(1);
 static float PickupBlipMaxDistance = config["PickupBlipMaxDistance"].asFloat(1.1f);
 static float PickupIconReferenceSize = config["PickupIconReferenceSize"].asFloat(30.0f);
@@ -164,7 +164,7 @@ static const tPickupBlip pickupBlips[] = {
     { 56,  PICKUP_GROUP_OTHER,   CRGBA(210, 210, 210, 255) },
     { 128, PICKUP_GROUP_OTHER,   CRGBA(210, 210, 210, 255) },
     { 138, PICKUP_GROUP_OTHER,   CRGBA(210, 210, 210, 255) },
-    { 149, PICKUP_GROUP_VEHICLE, CRGBA(210, 210, 210, 255) },
+    { 149, PICKUP_GROUP_OTHER,   CRGBA(210, 210, 210, 255) },
     // Icon-only entry for Wang Cars. Object model 150 is crane/crusher scenery
     // and must not be treated as a generic pickup by DrawPickupBlips().
     { 150, PICKUP_GROUP_VEHICLE, CRGBA(255, 160, 40, 255) },
@@ -704,7 +704,7 @@ public:
         case PICKUP_GROUP_FRENZY:
             return EnableFrenzyPickupBlips != 0;
         default:
-            return EnableOtherPickupBlips != 0;
+            return EnableOtherBlips != 0;
         }
     }
 
