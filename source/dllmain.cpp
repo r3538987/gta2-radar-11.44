@@ -65,6 +65,7 @@ static unsigned int ReadHotkey(const char* name, unsigned int defaultValue) {
 static int EnableBuiltinArrows = config["EnableBuiltinArrows"].asInt(0);
 static float DynamicArrowsDistance = config["DynamicArrowsDistance"].asFloat(1.0);
 static float RadarBlipsSize = config["RadarBlipsSize"].asFloat(RADAR_BLIPS_SIZE);
+static int EnableRadarEdgeClamp = config["EnableRadarEdgeClamp"].asInt(1);
 static int EnablePauseStatsRadar = config["EnablePauseStatsRadar"].asInt(1);
 static float PauseRadarLeft = config["PauseRadarLeft"].asFloat(PAUSE_RADAR_LEFT);
 static float PauseRadarBottom = config["PauseRadarBottom"].asFloat(PAUSE_RADAR_BOTTOM);
@@ -484,6 +485,19 @@ public:
         return value;
     }
 
+    static void UpdateRadarOrigin(const CVector2D& playerPosition) {
+        radarOrigin = playerPosition;
+        if (!EnableRadarEdgeClamp)
+            return;
+
+        // Stop scrolling at the map edges. If the view exceeds the map size,
+        // keep the map centered rather than clamping against inverted bounds.
+        radarOrigin.x = radarRange >= RADAR_SIZE_X * 0.5f ? RADAR_SIZE_X * 0.5f
+            : CLAMP(playerPosition.x, radarRange, RADAR_SIZE_X - radarRange);
+        radarOrigin.y = radarRange >= RADAR_SIZE_Y * 0.5f ? RADAR_SIZE_Y * 0.5f
+            : CLAMP(playerPosition.y, radarRange, RADAR_SIZE_Y - radarRange);
+    }
+
     static void DrawMap(float rangeOverride = 0.0f) {
         CPlayerPed* playa = GetGame()->FindPlayerPed(0);
 
@@ -492,7 +506,7 @@ public:
         else
             radarRange = RADAR_MIN_RANGE + (playa->m_ViewCamera.m_vPosInterp.FromInt16().z * 2.0f);
 
-        radarOrigin = playa->GetPed()->GetPosition2D().FromInt16();
+        UpdateRadarOrigin(playa->GetPed()->GetPosition2D().FromInt16());
         DrawRadarMap();
     }
 
@@ -553,9 +567,6 @@ public:
     static void DrawRadarMap() {
         DrawRadarMask();
 
-        int x = floor(radarOrigin.x / RADAR_TILE_SIZE);
-        int y = ceil(radarOrigin.y / RADAR_TILE_SIZE);
-
         RenderStateSet(D3DRENDERSTATE_FOGENABLE, (void*)FALSE);
         RenderStateSet(D3DRENDERSTATE_SRCBLEND, (void*)D3DBLEND_SRCALPHA);
         RenderStateSet(D3DRENDERSTATE_DESTBLEND, (void*)D3DBLEND_INVSRCALPHA);
@@ -569,14 +580,33 @@ public:
         RenderStateSet(D3DRENDERSTATE_TEXTUREADDRESS, (void*)D3DTADDRESS_CLAMP);
         RenderStateSet(D3DRENDERSTATE_TEXTUREPERSPECTIVE, (void*)FALSE);
 
-        for (int i = x - 4; i < x + 4; i++) {
-            for (int j = y - 4; j < y + 4; j++) {
+        // Clear the entire viewport so space beyond the map has a solid colour.
+        // Disable depth testing for the background so the radar mask cannot leave gaps.
+        RenderStateSet(D3DRENDERSTATE_TEXTUREHANDLE, (void*)NULL);
+        RenderStateSet(D3DRENDERSTATE_ZENABLE, (void*)FALSE);
+        float left = SCREEN_SCALE_X(radarViewport.left);
+        float top = SCREEN_SCALE_FROM_BOTTOM(radarViewport.bottom + radarViewport.height);
+        CRect background(left, top, left + SCREEN_SCALE_X(radarViewport.width), top + SCREEN_SCALE_Y(radarViewport.height));
+        CRGBA backgroundColour(0, 0, 0, 255);
+        CSprite2d::SetVertices(background, backgroundColour, backgroundColour, backgroundColour, backgroundColour);
+        RenderPrimitive(D3DPT_TRIANGLEFAN, CSprite2d::ms_aVertices, 4);
+        RenderStateSet(D3DRENDERSTATE_ZENABLE, (void*)TRUE);
+
+        // Visit the complete 8x8 map; clipping rejects tiles outside the viewport.
+        // A fixed window around the player can leave gaps at large radar ranges.
+        for (int i = 0; i < RADAR_NUM_TILES; i++) {
+            for (int j = 0; j < RADAR_NUM_TILES; j++) {
                 DrawRadarSection(i, j);
             }
         }
     }
 
     static void DrawRadarSection(int x, int y) {
+        // Never reuse an edge texture for a tile outside the map: clamped UVs
+        // would stretch its outermost pixels across the empty space.
+        if (x < 0 || x >= RADAR_NUM_TILES || y < 0 || y >= RADAR_NUM_TILES)
+            return;
+
         CVector2D worldPoly[8];
         CVector2D radarCorners[4];
         CVector2D radarPoly[8];
@@ -584,7 +614,6 @@ public:
         CVector2D screenPoly[8];
 
         GetTextureCorners(x, y, worldPoly);
-        ClipRadarTileCoords(x, y);
 
         int index = x + RADAR_NUM_TILES * y;
         LPDIRECT3DTEXTURE2 texture = radarSprites[index].m_pTexture;
@@ -624,17 +653,6 @@ public:
         // top left
         out[3].x = RADAR_TILE_SIZE * (x);
         out[3].y = RADAR_TILE_SIZE * (y);
-    }
-
-    static void ClipRadarTileCoords(int& x, int& y) {
-        if (x < 0)
-            x = 0;
-        if (x > RADAR_NUM_TILES - 1)
-            x = RADAR_NUM_TILES - 1;
-        if (y < 0)
-            y = 0;
-        if (y > RADAR_NUM_TILES - 1)
-            y = RADAR_NUM_TILES - 1;
     }
 
     static int ClipPolyPlane(const CVector2D* in, int nin, CVector2D* out, CVector* plane) {
@@ -1718,11 +1736,12 @@ public:
     }
 
     static void DrawRadarCentre() {
+        CPlayerPed* playa = GetGame()->FindPlayerPed(0);
         CVector2D out;
-        CVector2D in = CVector2D(0.0f, 0.0f);
+        CVector2D in;
+        TransformRealWorldPointToRadarSpace(in, playa->GetPed()->GetPosition2D().FromInt16());
         TransformRadarPointToScreenSpace(out, in);
 
-        CPlayerPed* playa = GetGame()->FindPlayerPed(0);
         CCar* car = playa->m_pPed->m_pCurrentCar;
 
         float angle = 0.0f;

@@ -18,6 +18,8 @@ Some changes have been made in order to make it work correctly in GTA2 but the b
  - Pickup blips or icons on radar, based on [gta2-radar by Sektor](https://gtamp.com/forum/viewtopic.php?f=4&t=818).
  - Bigger pause screen radar
 
+By default, both radars follow the player until the view reaches a map edge, then stop scrolling while the player marker moves within the map. Set `EnableRadarEdgeClamp=0` to keep the player centered at all times. When the radar range is 128 or greater, the entire 256-by-256 map stays centered in the viewport. Any space beyond the map boundaries is filled with solid black instead of stretched edge pixels.
+
 Experiment results:
 <p align="center">
 <img src="https://i.imgur.com/aHXD33N.png" width="300" height="300"> 
@@ -36,6 +38,7 @@ EnablePauseStatsRadar=0         # 0 = radar remain same during pause, 1 = radar 
 
 ; Gameplay radar settings
 RadarBlipsSize=7.0
+EnableRadarEdgeClamp=1          # Both radars: stop scrolling at map edges; 0 = always center the player
 
 ; Built-in arrow settings
 DynamicArrowsDistance = 1.0     # 
